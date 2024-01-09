@@ -1,0 +1,16 @@
+{
+    "rust-analyzer.server.extraEnv": {
+        "DATABASE_URL": "mongodb://username:password@localhost:27017/"
+    },
+    "protoc": {
+        "options": [
+            "--proto_path=proto/"
+        ]
+    },
+    "terminal.integrated.env.linux": {
+        "USERNAME": "username",
+        "PASSWORD": "password",
+        "DATABASE_URL": "mongodb://username:password@localhost:27017/"
+
+    }
+}
