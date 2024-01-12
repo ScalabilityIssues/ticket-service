@@ -1,15 +1,11 @@
+use std::str::FromStr;
+
+use mongodb::bson::oid::ObjectId;
 use mongodb::bson::DateTime;
-use mongodb::{
-    bson::{
-        doc,
-        serde_helpers::{
-            serialize_bson_datetime_as_rfc3339_string, serialize_hex_string_as_object_id,
-        },
-    },
-    Collection, Database,
-};
+use mongodb::{bson::doc, Collection, Database};
 use prost_types::Timestamp;
 use serde::{Deserialize, Serialize};
+use tokio_stream::StreamExt;
 use tonic::{Request, Response, Status};
 
 use crate::proto::ticketmngr::PassengerDetails;
@@ -24,11 +20,9 @@ pub struct TicketsApp {
 
 #[derive(Serialize, Deserialize)]
 pub struct Ticket1 {
-    #[serde(serialize_with = "serialize_hex_string_as_object_id")]
-    _id: String,
+    _id: ObjectId,
     flight_id: String,
     passenger: Passenger,
-    #[serde(serialize_with = "serialize_bson_datetime_as_rfc3339_string")]
     reservation_datetime: DateTime,
     estimated_cargo_weight: u32,
 }
@@ -38,7 +32,6 @@ pub struct Passenger {
     ssn: String,
     name: String,
     surname: String,
-    #[serde(serialize_with = "serialize_bson_datetime_as_rfc3339_string")]
     birth_date: DateTime,
 }
 
@@ -46,7 +39,7 @@ impl From<Ticket1> for Ticket {
     fn from(t: Ticket1) -> Self {
         let p = t.passenger;
         Self {
-            id: t._id,
+            id: t._id.to_string(),
             flight_id: t.flight_id,
             passenger: Some(PassengerDetails {
                 ssn: p.ssn,
@@ -83,7 +76,7 @@ impl TryFrom<Ticket> for Ticket1 {
         };
 
         Ok(Self {
-            _id: t.id,
+            _id: ObjectId::from_str(&t.id).map_err(|_| Status::invalid_argument("invalid id"))?,
             flight_id: t.flight_id,
             passenger: Passenger {
                 ssn: p.ssn,
@@ -99,15 +92,34 @@ impl TryFrom<Ticket> for Ticket1 {
 
 #[tonic::async_trait]
 impl Tickets for TicketsApp {
-    async fn list_tickets(&self, request: Request<()>) -> Result<Response<TicketList>, Status> {
-        todo!()
+    async fn list_tickets(&self, _request: Request<()>) -> Result<Response<TicketList>, Status> {
+        let collection: Collection<Ticket1> = self.mongo_client.collection("tickets");
+        let result: Result<Vec<Ticket1>, _> = collection
+            .find(None, None)
+            .await
+            .map_err(|e| Status::from_error(Box::new(e)))?
+            .collect()
+            .await;
+
+        let tickets: Vec<Ticket> = result
+            .map_err(|e| {
+                tracing::error!("{e}");
+                Status::from_error(Box::new(e))
+            })?
+            .into_iter()
+            .map(|t| t.into())
+            .collect();
+
+        Ok(Response::new(TicketList { tickets }))
     }
+
     async fn get_ticket(&self, request: Request<TicketQuery>) -> Result<Response<Ticket>, Status> {
         let TicketQuery { id } = request.into_inner();
+        let id = ObjectId::from_str(&id).map_err(|_| Status::invalid_argument("invalid id"))?;
         let collection: Collection<Ticket1> = self.mongo_client.collection("tickets");
 
         let Some(ticket) = collection
-            .find_one(doc! { "id": &id }, None)
+            .find_one(doc! { "_id": &id }, None)
             .await
             .map_err(|_| Status::internal(""))?
         else {
@@ -126,7 +138,7 @@ impl Tickets for TicketsApp {
             .map_err(|e| Status::from_error(Box::new(e)))?;
 
         let ticket = collection
-            .find_one(doc! { "id": &res.inserted_id }, None)
+            .find_one(doc! { "_id": &res.inserted_id }, None)
             .await
             .map_err(|e| Status::from_error(Box::new(e)))?
             .ok_or_else(|| Status::internal(""))?;
