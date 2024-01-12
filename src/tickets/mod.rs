@@ -2,10 +2,8 @@ use std::str::FromStr;
 
 use mongodb::bson::oid::ObjectId;
 use mongodb::bson::DateTime;
-use mongodb::{bson::doc, Collection, Database};
+use mongodb::Database;
 use prost_types::Timestamp;
-use serde::{Deserialize, Serialize};
-use tokio_stream::StreamExt;
 use tonic::{Request, Response, Status};
 
 use crate::proto::ticketmngr::PassengerDetails;
@@ -13,30 +11,17 @@ use crate::proto::ticketmngr::{
     tickets_server::Tickets, Ticket, TicketList, TicketQuery, TicketUpdate,
 };
 
+use self::data::TicketDatabase;
+
+mod data;
+
 #[derive(Debug)]
 pub struct TicketsApp {
     mongo_client: Database,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Ticket1 {
-    _id: ObjectId,
-    flight_id: String,
-    passenger: Passenger,
-    reservation_datetime: DateTime,
-    estimated_cargo_weight: u32,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Passenger {
-    ssn: String,
-    name: String,
-    surname: String,
-    birth_date: DateTime,
-}
-
-impl From<Ticket1> for Ticket {
-    fn from(t: Ticket1) -> Self {
+impl From<data::Ticket> for Ticket {
+    fn from(t: data::Ticket) -> Self {
         let p = t.passenger;
         Self {
             id: t._id.to_string(),
@@ -67,7 +52,7 @@ fn convert_timestamp_to_datetime(t: Option<Timestamp>) -> Result<DateTime, Statu
     ))
 }
 
-impl TryFrom<Ticket> for Ticket1 {
+impl TryFrom<Ticket> for data::Ticket {
     type Error = Status;
 
     fn try_from(t: Ticket) -> Result<Self, Self::Error> {
@@ -78,7 +63,7 @@ impl TryFrom<Ticket> for Ticket1 {
         Ok(Self {
             _id: ObjectId::from_str(&t.id).map_err(|_| Status::invalid_argument("invalid id"))?,
             flight_id: t.flight_id,
-            passenger: Passenger {
+            passenger: data::Passenger {
                 ssn: p.ssn,
                 name: p.name,
                 surname: p.surname,
@@ -93,22 +78,9 @@ impl TryFrom<Ticket> for Ticket1 {
 #[tonic::async_trait]
 impl Tickets for TicketsApp {
     async fn list_tickets(&self, _request: Request<()>) -> Result<Response<TicketList>, Status> {
-        let collection: Collection<Ticket1> = self.mongo_client.collection("tickets");
-        let result: Result<Vec<Ticket1>, _> = collection
-            .find(None, None)
-            .await
-            .map_err(|e| Status::from_error(Box::new(e)))?
-            .collect()
-            .await;
+        let result = self.mongo_client.list_tickets().await?;
 
-        let tickets: Vec<Ticket> = result
-            .map_err(|e| {
-                tracing::error!("{e}");
-                Status::from_error(Box::new(e))
-            })?
-            .into_iter()
-            .map(|t| t.into())
-            .collect();
+        let tickets: Vec<Ticket> = result.into_iter().map(|t| t.into()).collect();
 
         Ok(Response::new(TicketList { tickets }))
     }
@@ -116,32 +88,19 @@ impl Tickets for TicketsApp {
     async fn get_ticket(&self, request: Request<TicketQuery>) -> Result<Response<Ticket>, Status> {
         let TicketQuery { id } = request.into_inner();
         let id = ObjectId::from_str(&id).map_err(|_| Status::invalid_argument("invalid id"))?;
-        let collection: Collection<Ticket1> = self.mongo_client.collection("tickets");
 
-        let Some(ticket) = collection
-            .find_one(doc! { "_id": &id }, None)
-            .await
-            .map_err(|_| Status::internal(""))?
-        else {
-            return Err(Status::not_found("ticket not found"));
-        };
+        let ticket = self.mongo_client.get_ticket(id).await?;
 
         Ok(Response::new(ticket.into()))
     }
 
     async fn create_ticket(&self, request: Request<Ticket>) -> Result<Response<Ticket>, Status> {
-        let collection: Collection<Ticket1> = self.mongo_client.collection("tickets");
+        let id = self
+            .mongo_client
+            .create_ticket(request.into_inner().try_into()?)
+            .await?;
 
-        let res = collection
-            .insert_one(&request.into_inner().try_into()?, None)
-            .await
-            .map_err(|e| Status::from_error(Box::new(e)))?;
-
-        let ticket = collection
-            .find_one(doc! { "_id": &res.inserted_id }, None)
-            .await
-            .map_err(|e| Status::from_error(Box::new(e)))?
-            .ok_or_else(|| Status::internal(""))?;
+        let ticket = self.mongo_client.get_ticket(id).await?;
 
         Ok(Response::new(ticket.into()))
     }
