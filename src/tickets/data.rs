@@ -1,10 +1,12 @@
-use mongodb::{
-    bson::{doc, oid::ObjectId, DateTime},
-    Collection, Database,
-};
+use mongodb::bson::{doc, oid::ObjectId, DateTime};
+use mongodb::{Collection, Database};
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
-use tonic::{async_trait, Status};
+use tonic::async_trait;
+
+use crate::errors::DatabaseError;
+
+type DbResult<T> = std::result::Result<T, DatabaseError>;
 
 #[derive(Serialize, Deserialize)]
 pub struct Ticket {
@@ -27,34 +29,27 @@ pub struct Passenger {
 pub trait TicketDatabase {
     fn ticket_collection(&self) -> Collection<Ticket>;
 
-    async fn list_tickets(&self) -> Result<Vec<Ticket>, Status> {
-        self.ticket_collection()
-            .find(None, None)
-            .await
-            .map_err(|e| Status::from_error(Box::new(e)))?
-            .collect::<Result<Vec<Ticket>, _>>()
-            .await
-            .map_err(|e| Status::from_error(Box::new(e)))
+    async fn list_tickets(&self) -> DbResult<Vec<Ticket>> {
+        let stream = self.ticket_collection().find(None, None).await?;
+
+        let tickets = stream.collect::<Result<Vec<_>, _>>().await?;
+
+        Ok(tickets)
     }
 
-    async fn get_ticket(&self, id: ObjectId) -> Result<Ticket, Status> {
-        self.ticket_collection()
+    async fn get_ticket(&self, id: ObjectId) -> DbResult<Ticket> {
+        let ticket = self
+            .ticket_collection()
             .find_one(doc! { "_id": &id }, None)
-            .await
-            .map_err(|_| Status::internal(""))?
-            .ok_or(Status::not_found("ticket not found"))
+            .await?;
+
+        ticket.ok_or_else(|| DatabaseError::not_found("ticket not found"))
     }
 
-    async fn create_ticket(&self, ticket: Ticket) -> Result<ObjectId, Status> {
-        self.ticket_collection()
-            .insert_one(ticket, None)
-            .await
-            .map_err(|e| Status::from_error(Box::new(e)))
-            .map(|res| {
-                res.inserted_id
-                    .as_object_id()
-                    .ok_or(Status::internal("idk"))
-            })?
+    async fn create_ticket(&self, ticket: Ticket) -> DbResult<ObjectId> {
+        let res = self.ticket_collection().insert_one(ticket, None).await?;
+        let id = res.inserted_id.as_object_id().unwrap();
+        Ok(id)
     }
 }
 

@@ -14,6 +14,8 @@ use tracing::Level;
 use crate::{proto::ticketmngr::tickets_server::TicketsServer, tickets::TicketsApp};
 
 mod config;
+mod datautils;
+mod errors;
 mod proto;
 mod tickets;
 

@@ -1702,6 +1702,7 @@ dependencies = [
  "prost",
  "prost-types",
  "serde",
+ "thiserror",
  "tokio",
  "tokio-stream",
  "tonic",
