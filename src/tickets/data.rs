@@ -1,6 +1,7 @@
 use mongodb::bson::{doc, oid::ObjectId, DateTime};
 use mongodb::{Collection, Database};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use tokio_stream::StreamExt;
 use tonic::async_trait;
 
@@ -11,6 +12,7 @@ type DbResult<T> = std::result::Result<T, DatabaseError>;
 #[derive(Serialize, Deserialize)]
 pub struct Ticket {
     pub _id: ObjectId,
+    pub url: String,
     pub flight_id: String,
     pub passenger: Passenger,
     pub reservation_datetime: DateTime,
@@ -23,6 +25,7 @@ pub struct Passenger {
     pub name: String,
     pub surname: String,
     pub birth_date: DateTime,
+    pub email: String,
 }
 
 #[async_trait]
@@ -50,6 +53,42 @@ pub trait TicketDatabase {
         let res = self.ticket_collection().insert_one(ticket, None).await?;
         let id = res.inserted_id.as_object_id().unwrap();
         Ok(id)
+    }
+
+    async fn delete_ticket(&self, id: ObjectId) -> DbResult<()> {
+        self.ticket_collection()
+            .delete_one(doc! { "_id": &id }, None)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn update_ticket(
+        &self,
+        id: ObjectId,
+        update: Ticket,
+        update_paths: BTreeSet<String>,
+    ) -> DbResult<()> {
+        let mut updated_doc = doc! {};
+
+        let Ticket { passenger, .. } = update;
+
+        for field in update_paths {
+            match field.as_str() {
+                "passenger.ssn" => updated_doc.insert(field, passenger.ssn.clone()),
+                "passenger.name" => updated_doc.insert(field, passenger.name.clone()),
+                "passenger.surname" => updated_doc.insert(field, passenger.surname.clone()),
+                "passenger.birth_date" => updated_doc.insert(field, passenger.birth_date.clone()),
+                "passenger.email" => updated_doc.insert(field, passenger.email.clone()),
+                f => return Err(DatabaseError::invalid_update_path(f.to_string())),
+            };
+        }
+
+        self.ticket_collection()
+            .update_one(doc! { "_id": &id }, doc! { "$set": updated_doc }, None)
+            .await?;
+
+        Ok(())
     }
 }
 

@@ -2,8 +2,10 @@ use mongodb::Database;
 use tonic::{Request, Response, Status};
 
 use crate::datautils::convert_str_to_object_id;
+use crate::parse::parse_update_paths;
 use crate::proto::ticketmngr::{
-    tickets_server::Tickets, Ticket, TicketList, TicketQuery, TicketUpdate,
+    tickets_server::Tickets, CreateTicketRequest, DeleteTicketRequest, GetTicketRequest, Ticket,
+    TicketList, UpdateTicketRequest,
 };
 
 use self::data::TicketDatabase;
@@ -26,8 +28,11 @@ impl Tickets for TicketsApp {
         Ok(Response::new(TicketList { tickets }))
     }
 
-    async fn get_ticket(&self, request: Request<TicketQuery>) -> Result<Response<Ticket>, Status> {
-        let TicketQuery { id } = request.into_inner();
+    async fn get_ticket(
+        &self,
+        request: Request<GetTicketRequest>,
+    ) -> Result<Response<Ticket>, Status> {
+        let GetTicketRequest { id } = request.into_inner();
         let id = convert_str_to_object_id(&id, "invalid id")?;
 
         let ticket = self.mongo.get_ticket(id).await?;
@@ -35,8 +40,11 @@ impl Tickets for TicketsApp {
         Ok(Response::new(ticket.into()))
     }
 
-    async fn create_ticket(&self, request: Request<Ticket>) -> Result<Response<Ticket>, Status> {
-        let new_ticket = request.into_inner().try_into()?;
+    async fn create_ticket(
+        &self,
+        request: Request<CreateTicketRequest>,
+    ) -> Result<Response<Ticket>, Status> {
+        let new_ticket = request.into_inner().ticket.unwrap_or_default().try_into()?;
 
         let id = self.mongo.create_ticket(new_ticket).await?;
 
@@ -45,15 +53,38 @@ impl Tickets for TicketsApp {
         Ok(Response::new(ticket.into()))
     }
 
-    async fn delete_ticket(&self, request: Request<TicketQuery>) -> Result<Response<()>, Status> {
-        todo!()
+    async fn delete_ticket(
+        &self,
+        request: Request<DeleteTicketRequest>,
+    ) -> Result<Response<()>, Status> {
+        let DeleteTicketRequest { id } = request.into_inner();
+        let id = convert_str_to_object_id(&id, "invalid id")?;
+
+        self.mongo.delete_ticket(id).await?;
+
+        Ok(Response::new(()))
     }
 
     async fn update_ticket(
         &self,
-        request: Request<TicketUpdate>,
+        request: Request<UpdateTicketRequest>,
     ) -> Result<Response<Ticket>, Status> {
-        todo!()
+        let UpdateTicketRequest {
+            id,
+            update,
+            update_mask,
+        } = request.into_inner();
+        let id = convert_str_to_object_id(&id, "invalid id")?;
+        let update_paths = parse_update_paths(update_mask)?;
+        let update = update.ok_or(Status::invalid_argument("update required"))?;
+
+        self.mongo
+            .update_ticket(id, update.try_into()?, update_paths)
+            .await?;
+
+        let ticket = self.mongo.get_ticket(id).await?;
+
+        Ok(Response::new(ticket.into()))
     }
 }
 

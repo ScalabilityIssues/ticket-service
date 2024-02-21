@@ -4,7 +4,8 @@
     },
     "protoc": {
         "options": [
-            "--proto_path=proto/"
+            "--proto_path=proto/",
+            "--proto_path=proto/googleapis/"
         ]
     },
     "terminal.integrated.env.linux": {

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -9,6 +8,9 @@ pub enum DatabaseError {
 
     #[error("not found: {details}")]
     NotFound { details: &'static str },
+
+    #[error("invalid update path: {path}")]
+    InvalidUpdatePath { path: String },
 }
 
 impl From<DatabaseError> for tonic::Status {
@@ -21,6 +23,7 @@ impl From<DatabaseError> for tonic::Status {
                 s.set_source(Arc::new(e));
                 s
             }
+            DatabaseError::InvalidUpdatePath { path } => tonic::Status::invalid_argument(path),
         }
     }
 }
@@ -28,5 +31,9 @@ impl From<DatabaseError> for tonic::Status {
 impl DatabaseError {
     pub fn not_found(details: &'static str) -> Self {
         DatabaseError::NotFound { details }
+    }
+
+    pub fn invalid_update_path(path: String) -> Self {
+        DatabaseError::InvalidUpdatePath { path }
     }
 }

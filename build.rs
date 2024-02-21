@@ -8,7 +8,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .file_descriptor_set_path(out_dir.join("proto_descriptor.bin"))
         .build_client(false)
         .build_transport(false)
-        .compile(&["proto/tickets.proto"], &["proto"])?;
+        .compile(
+            &["proto/ticketsrvc/tickets.proto"],
+            &["proto", "proto/googleapis"],
+        )?;
 
     // rerun if migrations change
     println!("cargo:rerun-if-changed=migrations");
