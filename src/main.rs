@@ -18,6 +18,7 @@ mod datautils;
 mod errors;
 mod proto;
 mod tickets;
+mod parse;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
