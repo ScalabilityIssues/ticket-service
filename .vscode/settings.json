@@ -12,6 +12,5 @@
         "USERNAME": "username",
         "PASSWORD": "password",
         "DATABASE_URL": "mongodb://username:password@localhost:27017/"
-
     }
 }

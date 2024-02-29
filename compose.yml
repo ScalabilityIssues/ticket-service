@@ -16,3 +16,15 @@ services:
       ME_CONFIG_MONGODB_ADMINUSERNAME: ${USERNAME}
       ME_CONFIG_MONGODB_ADMINPASSWORD: ${PASSWORD}
       ME_CONFIG_MONGODB_URL: mongodb://${USERNAME}:${PASSWORD}@mongo:27017/
+
+  flightmngr:
+    image: ghcr.io/scalabilityissues/flight-manager:main
+    environment:
+      DATABASE_URL: postgres://postgres:pwd@flightmngr-db:5432
+    ports:
+      - 60051:50051
+
+  flightmngr-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: pwd

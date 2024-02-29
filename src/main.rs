@@ -7,18 +7,20 @@ use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio_stream::wrappers::TcpListenerStream;
-use tonic::transport::Server;
+use tonic::transport::{Channel, Server};
 use tower_http::trace;
 use tracing::Level;
 
+use crate::dependencies::FlightManager;
 use crate::{proto::ticketmngr::tickets_server::TicketsServer, tickets::TicketsApp};
 
 mod config;
 mod datautils;
+mod dependencies;
 mod errors;
+mod parse;
 mod proto;
 mod tickets;
-mod parse;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let opt = envy::from_env::<config::Options>()?;
 
-    // db experiments
+    // define db
     let mut client_options = ClientOptions::parse(&opt.database_url).await?;
     // Set the server_api field of the client_options object to Stable API version 1
     let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
@@ -34,6 +36,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::with_options(client_options)?.database("ticket-svc");
     client.run_command(doc! { "ping": 1 }, None).await?;
     tracing::info!("succcessfully pinged database");
+
+    // define flightmngr grpc client
+    let channel = Channel::builder(opt.flightmngr_url.try_into()?)
+        .connect()
+        .await?;
 
     // bind server socket
     let addr = SocketAddr::new(opt.ip, opt.port);
@@ -52,9 +59,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
                 .on_response(trace::DefaultOnResponse::new().level(Level::INFO)),
         )
-        // cnable grpc reflection
+        // enable grpc reflection
         .add_service(reflection)
-        .add_service(TicketsServer::new(TicketsApp::new(client)))
+        .add_service(TicketsServer::new(TicketsApp::new(
+            client,
+            FlightManager::new(channel),
+        )))
         // serve
         .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async {
             let _ = signal(SignalKind::terminate()).unwrap().recv().await;

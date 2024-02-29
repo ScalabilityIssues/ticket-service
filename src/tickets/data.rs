@@ -90,6 +90,15 @@ pub trait TicketDatabase {
 
         Ok(())
     }
+
+    async fn get_existing_tickets(&self, flight_id: &str) -> DbResult<u32> {
+        let count = self
+            .ticket_collection()
+            .count_documents(doc! { "flight_id": flight_id }, None)
+            .await?;
+
+        Ok(count.try_into().unwrap())
+    }
 }
 
 impl TicketDatabase for Database {

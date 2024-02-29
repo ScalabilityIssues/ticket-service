@@ -13,6 +13,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &["proto", "proto/googleapis"],
         )?;
 
+    tonic_build::configure()
+        .protoc_arg("--experimental_allow_proto3_optional")
+        .build_server(false)
+        .build_transport(false)
+        .compile(
+            &[
+                "proto/flightmngr/planes.proto",
+                "proto/flightmngr/flights.proto",
+            ],
+            &["proto", "proto/googleapis"],
+        )?;
+
     // rerun if migrations change
     println!("cargo:rerun-if-changed=migrations");
 

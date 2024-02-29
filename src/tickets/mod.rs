@@ -2,11 +2,14 @@ use mongodb::Database;
 use tonic::{Request, Response, Status};
 
 use crate::datautils::convert_str_to_object_id;
+use crate::dependencies::FlightManager;
 use crate::parse::parse_update_paths;
+use crate::proto::flightmngr::Plane;
 use crate::proto::ticketmngr::{
     tickets_server::Tickets, CreateTicketRequest, DeleteTicketRequest, GetTicketRequest, Ticket,
     TicketList, UpdateTicketRequest,
 };
+use crate::proto::ticketmngr::{FlightStatistics, GetFlightStatisticsRequest};
 
 use self::data::TicketDatabase;
 
@@ -16,6 +19,7 @@ mod map;
 #[derive(Debug)]
 pub struct TicketsApp {
     mongo: Database,
+    flightmngr: FlightManager,
 }
 
 #[tonic::async_trait]
@@ -44,13 +48,27 @@ impl Tickets for TicketsApp {
         &self,
         request: Request<CreateTicketRequest>,
     ) -> Result<Response<Ticket>, Status> {
-        let new_ticket = request.into_inner().ticket.unwrap_or_default().try_into()?;
+        let new_ticket = request.into_inner().ticket.unwrap_or_default();
 
-        let id = self.mongo.create_ticket(new_ticket).await?;
+        let existing_tickets = self
+            .mongo
+            .get_existing_tickets(&new_ticket.flight_id)
+            .await?;
+        let Plane { cabin_capacity, .. } = self
+            .flightmngr
+            .get_plane_details(new_ticket.flight_id.clone())
+            .await?;
 
-        let ticket = self.mongo.get_ticket(id).await?;
+        // TODO: prevent race condition when creating a ticket
+        if cabin_capacity - existing_tickets > 0 {
+            let id = self.mongo.create_ticket(new_ticket.try_into()?).await?;
 
-        Ok(Response::new(ticket.into()))
+            let ticket = self.mongo.get_ticket(id).await?;
+
+            Ok(Response::new(ticket.into()))
+        } else {
+            Err(Status::failed_precondition("no seat available"))
+        }
     }
 
     async fn delete_ticket(
@@ -86,12 +104,29 @@ impl Tickets for TicketsApp {
 
         Ok(Response::new(ticket.into()))
     }
+
+    async fn get_flight_statistics(
+        &self,
+        request: Request<GetFlightStatisticsRequest>,
+    ) -> Result<Response<FlightStatistics>, Status> {
+        let GetFlightStatisticsRequest { flight_id } = request.into_inner();
+        // let id = convert_str_to_object_id(&flight_id, "invalid id")?;
+
+        let existing_tickets = self.mongo.get_existing_tickets(&flight_id).await?;
+        let airplane = self.flightmngr.get_plane_details(flight_id).await?;
+
+        Ok(Response::new(FlightStatistics {
+            total_seats: airplane.cabin_capacity,
+            reserved_seats: existing_tickets,
+        }))
+    }
 }
 
 impl TicketsApp {
-    pub fn new(mongo_client: Database) -> Self {
+    pub fn new(mongo_client: Database, flightmngr: FlightManager) -> Self {
         Self {
             mongo: mongo_client,
+            flightmngr,
         }
     }
 }

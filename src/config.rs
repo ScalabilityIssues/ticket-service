@@ -10,6 +10,10 @@ fn default_port() -> u16 {
     50051
 }
 
+fn default_flightmngr_url() -> String {
+    String::from("grpc://flightmngr")
+}
+
 #[derive(Deserialize, Debug)]
 pub struct Options {
     pub database_url: String,
@@ -17,4 +21,6 @@ pub struct Options {
     pub ip: IpAddr,
     #[serde(default = "default_port")]
     pub port: u16,
+    #[serde(default = "default_flightmngr_url")]
+    pub flightmngr_url: String,
 }
