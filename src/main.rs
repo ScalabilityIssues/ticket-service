@@ -11,7 +11,7 @@ use tonic::transport::{Channel, Server};
 use tower_http::trace;
 use tracing::Level;
 
-use crate::dependencies::FlightManager;
+use crate::{dependencies::FlightManager, rabbitmq::Rabbit};
 use crate::{proto::ticketmngr::tickets_server::TicketsServer, tickets::TicketsApp};
 
 mod config;
@@ -20,6 +20,7 @@ mod dependencies;
 mod errors;
 mod parse;
 mod proto;
+mod rabbitmq;
 mod tickets;
 
 #[tokio::main]
@@ -29,13 +30,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = envy::from_env::<config::Options>()?;
 
     // define db
+    tracing::info!("connecting to mongodb...");
     let mut client_options = ClientOptions::parse(&opt.database_url).await?;
     // Set the server_api field of the client_options object to Stable API version 1
     let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
     client_options.server_api = Some(server_api);
     let client = Client::with_options(client_options)?.database("ticket-svc");
     client.run_command(doc! { "ping": 1 }, None).await?;
-    tracing::info!("succcessfully pinged database");
+    tracing::info!("succcessfully connected and pinged mongodb");
+
+    // Create the rabbitmq channel
+    tracing::info!("connecting to rabbitmq broker...");
+    let rabbitmq = Rabbit::new(
+        &opt.rabbitmq_url,
+        opt.rabbitmq_port,
+        &opt.rabbitmq_user,
+        &opt.rabbitmq_password,
+        String::from("ticket-update"),
+        String::from("direct"),
+    )
+    .await?;
+    tracing::info!("successfully connected to rabbitmq broker and channel created...");
 
     // define flightmngr grpc client
     let channel = Channel::builder(opt.flightmngr_url.try_into()?)
@@ -64,6 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_service(TicketsServer::new(TicketsApp::new(
             client,
             FlightManager::new(channel),
+            rabbitmq,
         )))
         // serve
         .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async {

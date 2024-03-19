@@ -2,13 +2,16 @@ use mongodb::bson::oid::ObjectId;
 use tonic::Status;
 
 use crate::datautils::{convert_datetime_to_timestamp, convert_timestamp_to_datetime};
-use crate::proto::ticketmngr;
+use crate::proto::ticketmngr::{self, TicketStatus};
 
 use super::data;
 
 impl From<data::Ticket> for ticketmngr::Ticket {
     fn from(t: data::Ticket) -> Self {
         let p = t.passenger;
+        let ticket_status =
+            TicketStatus::from_str_name(&t.ticket_status).unwrap_or_default() as i32;
+
         Self {
             id: t._id.to_string(),
             flight_id: t.flight_id,
@@ -22,6 +25,7 @@ impl From<data::Ticket> for ticketmngr::Ticket {
             }),
             reservation_datetime: convert_datetime_to_timestamp(t.reservation_datetime),
             estimated_cargo_weight: t.estimated_cargo_weight,
+            ticket_status,
         }
     }
 }
@@ -36,6 +40,11 @@ impl TryFrom<ticketmngr::Ticket> for data::Ticket {
 
         let _id = ObjectId::new();
 
+        let ticket_status = TicketStatus::try_from(t.ticket_status)
+            .or(Err(Status::invalid_argument("invalid ticket status")))?
+            .as_str_name()
+            .to_string();
+
         Ok(Self {
             _id,
             url: t.url,
@@ -49,6 +58,7 @@ impl TryFrom<ticketmngr::Ticket> for data::Ticket {
             },
             reservation_datetime: convert_timestamp_to_datetime(t.reservation_datetime)?,
             estimated_cargo_weight: t.estimated_cargo_weight,
+            ticket_status,
         })
     }
 }

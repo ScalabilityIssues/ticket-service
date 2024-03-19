@@ -11,4 +11,4 @@
 ### Eecution
 
 1. `docker compose up -d`
-1. `cargo run`
+1. `FLIGHTMNGR_URL=grpc://localhost:60051 cargo run`

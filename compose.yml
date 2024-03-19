@@ -18,6 +18,7 @@ services:
       ME_CONFIG_MONGODB_URL: mongodb://${USERNAME}:${PASSWORD}@mongo:27017/
 
   flightmngr:
+    pull_policy: always
     image: ghcr.io/scalabilityissues/flight-manager:main
     environment:
       DATABASE_URL: postgres://postgres:pwd@flightmngr-db:5432

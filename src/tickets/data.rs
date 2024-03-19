@@ -5,9 +5,10 @@ use std::collections::BTreeSet;
 use tokio_stream::StreamExt;
 use tonic::async_trait;
 
-use crate::errors::DatabaseError;
+use crate::errors::ApplicationError;
+use crate::proto::ticketmngr::TicketStatus;
 
-type DbResult<T> = std::result::Result<T, DatabaseError>;
+type DbResult<T> = std::result::Result<T, ApplicationError>;
 
 #[derive(Serialize, Deserialize)]
 pub struct Ticket {
@@ -17,6 +18,7 @@ pub struct Ticket {
     pub passenger: Passenger,
     pub reservation_datetime: DateTime,
     pub estimated_cargo_weight: u32,
+    pub ticket_status: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -31,22 +33,39 @@ pub struct Passenger {
 #[async_trait]
 pub trait TicketDatabase {
     fn ticket_collection(&self) -> Collection<Ticket>;
+    fn deleted_ticket_collection(&self) -> Collection<Ticket>;
 
-    async fn list_tickets(&self) -> DbResult<Vec<Ticket>> {
-        let stream = self.ticket_collection().find(None, None).await?;
-
-        let tickets = stream.collect::<Result<Vec<_>, _>>().await?;
-
+    async fn list_tickets(&self, include_nonvalid: bool) -> DbResult<Vec<Ticket>> {
+        let stream_valid = self.ticket_collection().find(None, None).await?;
+        let mut tickets = stream_valid.collect::<Result<Vec<_>, _>>().await?;
+        if include_nonvalid {
+            let stream_deleted = self.deleted_ticket_collection().find(None, None).await?;
+            let deleted_tickets = stream_deleted.collect::<Result<Vec<_>, _>>().await?;
+            tickets.extend(deleted_tickets);
+        }
         Ok(tickets)
     }
 
-    async fn get_ticket(&self, id: ObjectId) -> DbResult<Ticket> {
+    async fn get_ticket(&self, id: ObjectId, allow_nonvalid: bool) -> DbResult<Ticket> {
         let ticket = self
             .ticket_collection()
             .find_one(doc! { "_id": &id }, None)
             .await?;
 
-        ticket.ok_or_else(|| DatabaseError::not_found("ticket not found"))
+        match ticket {
+            Some(t) => Ok(t),
+            None => {
+                if allow_nonvalid {
+                    let ticket = self
+                        .deleted_ticket_collection()
+                        .find_one(doc! { "_id": &id }, None)
+                        .await?;
+                    return ticket.ok_or_else(|| ApplicationError::not_found("ticket not found"));
+                } else {
+                    return Err(ApplicationError::not_found("ticket not found"));
+                }
+            }
+        }
     }
 
     async fn create_ticket(&self, ticket: Ticket) -> DbResult<ObjectId> {
@@ -56,6 +75,16 @@ pub trait TicketDatabase {
     }
 
     async fn delete_ticket(&self, id: ObjectId) -> DbResult<()> {
+        // retrieve the ticket
+        let mut ticket = self.get_ticket(id, false).await?;
+        // set as invalid
+        ticket.ticket_status = TicketStatus::Deleted.as_str_name().to_string();
+        // insert the ticket in the deleted collection
+        let _ = self
+            .deleted_ticket_collection()
+            .insert_one(ticket, None)
+            .await?;
+        // delete the ticket from the collection
         self.ticket_collection()
             .delete_one(doc! { "_id": &id }, None)
             .await?;
@@ -80,7 +109,7 @@ pub trait TicketDatabase {
                 "passenger.surname" => updated_doc.insert(field, passenger.surname.clone()),
                 "passenger.birth_date" => updated_doc.insert(field, passenger.birth_date.clone()),
                 "passenger.email" => updated_doc.insert(field, passenger.email.clone()),
-                f => return Err(DatabaseError::invalid_update_path(f.to_string())),
+                f => return Err(ApplicationError::invalid_update_path(f.to_string())),
             };
         }
 
@@ -104,5 +133,9 @@ pub trait TicketDatabase {
 impl TicketDatabase for Database {
     fn ticket_collection(&self) -> Collection<Ticket> {
         self.collection("tickets")
+    }
+
+    fn deleted_ticket_collection(&self) -> Collection<Ticket> {
+        self.collection("tickets-deleted")
     }
 }

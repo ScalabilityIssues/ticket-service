@@ -9,23 +9,31 @@ use crate::proto::ticketmngr::{
     tickets_server::Tickets, CreateTicketRequest, DeleteTicketRequest, GetTicketRequest, Ticket,
     TicketList, UpdateTicketRequest,
 };
-use crate::proto::ticketmngr::{FlightStatistics, GetFlightStatisticsRequest};
+use crate::proto::ticketmngr::{
+    FlightStatistics, GetFlightStatisticsRequest, ListTicketsRequest, TicketStatus,
+};
+use crate::rabbitmq::{Rabbit, UpdateKind};
 
 use self::data::TicketDatabase;
 
 mod data;
 mod map;
 
-#[derive(Debug)]
 pub struct TicketsApp {
     mongo: Database,
     flightmngr: FlightManager,
+    rabbitmq: Rabbit,
 }
 
 #[tonic::async_trait]
 impl Tickets for TicketsApp {
-    async fn list_tickets(&self, _request: Request<()>) -> Result<Response<TicketList>, Status> {
-        let result = self.mongo.list_tickets().await?;
+    async fn list_tickets(
+        &self,
+        request: Request<ListTicketsRequest>,
+    ) -> Result<Response<TicketList>, Status> {
+        let ListTicketsRequest { include_nonvalid } = request.into_inner();
+
+        let result = self.mongo.list_tickets(include_nonvalid).await?;
 
         let tickets: Vec<Ticket> = result.into_iter().map(Into::into).collect();
 
@@ -36,10 +44,10 @@ impl Tickets for TicketsApp {
         &self,
         request: Request<GetTicketRequest>,
     ) -> Result<Response<Ticket>, Status> {
-        let GetTicketRequest { id } = request.into_inner();
+        let GetTicketRequest { id, allow_nonvalid } = request.into_inner();
         let id = convert_str_to_object_id(&id, "invalid id")?;
 
-        let ticket = self.mongo.get_ticket(id).await?;
+        let ticket = self.mongo.get_ticket(id, allow_nonvalid).await?;
 
         Ok(Response::new(ticket.into()))
     }
@@ -48,7 +56,8 @@ impl Tickets for TicketsApp {
         &self,
         request: Request<CreateTicketRequest>,
     ) -> Result<Response<Ticket>, Status> {
-        let new_ticket = request.into_inner().ticket.unwrap_or_default();
+        let mut new_ticket = request.into_inner().ticket.unwrap_or_default();
+        new_ticket.ticket_status = Into::into(TicketStatus::Valid);
 
         let existing_tickets = self
             .mongo
@@ -60,15 +69,19 @@ impl Tickets for TicketsApp {
             .await?;
 
         // TODO: prevent race condition when creating a ticket
-        if cabin_capacity - existing_tickets > 0 {
-            let id = self.mongo.create_ticket(new_ticket.try_into()?).await?;
-
-            let ticket = self.mongo.get_ticket(id).await?;
-
-            Ok(Response::new(ticket.into()))
-        } else {
-            Err(Status::failed_precondition("no seat available"))
+        if cabin_capacity - existing_tickets <= 0 {
+            return Err(Status::failed_precondition("no seat available"));
         }
+
+        let id = self.mongo.create_ticket(new_ticket.try_into()?).await?;
+
+        let ticket: Ticket = self.mongo.get_ticket(id, false).await?.into();
+
+        self.rabbitmq
+            .notify_ticket_update(ticket.clone(), UpdateKind::Create)
+            .await?;
+
+        Ok(Response::new(ticket))
     }
 
     async fn delete_ticket(
@@ -78,7 +91,13 @@ impl Tickets for TicketsApp {
         let DeleteTicketRequest { id } = request.into_inner();
         let id = convert_str_to_object_id(&id, "invalid id")?;
 
+        let ticket = self.mongo.get_ticket(id, false).await?.into();
+
         self.mongo.delete_ticket(id).await?;
+
+        self.rabbitmq
+            .notify_ticket_update(ticket, UpdateKind::Delete)
+            .await?;
 
         Ok(Response::new(()))
     }
@@ -100,9 +119,13 @@ impl Tickets for TicketsApp {
             .update_ticket(id, update.try_into()?, update_paths)
             .await?;
 
-        let ticket = self.mongo.get_ticket(id).await?;
+        let ticket: Ticket = self.mongo.get_ticket(id, false).await?.into();
 
-        Ok(Response::new(ticket.into()))
+        self.rabbitmq
+            .notify_ticket_update(ticket.clone(), UpdateKind::Update)
+            .await?;
+
+        Ok(Response::new(ticket))
     }
 
     async fn get_flight_statistics(
@@ -123,10 +146,11 @@ impl Tickets for TicketsApp {
 }
 
 impl TicketsApp {
-    pub fn new(mongo_client: Database, flightmngr: FlightManager) -> Self {
+    pub fn new(mongo_client: Database, flightmngr: FlightManager, rabbitmq: Rabbit) -> Self {
         Self {
             mongo: mongo_client,
             flightmngr,
+            rabbitmq,
         }
     }
 }
