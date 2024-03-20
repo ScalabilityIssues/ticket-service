@@ -8,10 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .file_descriptor_set_path(out_dir.join("proto_descriptor.bin"))
         .build_client(false)
         .build_transport(false)
-        .compile(
-            &["proto/ticketsrvc/tickets.proto"],
-            &["proto", "proto/googleapis"],
-        )?;
+        .compile(&["proto/ticketsrvc/tickets.proto"], &["proto"])?;
 
     tonic_build::configure()
         .protoc_arg("--experimental_allow_proto3_optional")
