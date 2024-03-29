@@ -8,7 +8,7 @@ use amqprs::{
 };
 use prost::Message;
 
-use crate::{errors::ApplicationError, proto::ticketmngr::Ticket};
+use crate::{errors::ApplicationError, proto::ticketsrvc::Ticket};
 
 pub struct Rabbit {
     _connection: Connection,

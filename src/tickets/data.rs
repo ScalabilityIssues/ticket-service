@@ -6,7 +6,7 @@ use tokio_stream::StreamExt;
 use tonic::async_trait;
 
 use crate::errors::ApplicationError;
-use crate::proto::ticketmngr::TicketStatus;
+use crate::proto::ticketsrvc::TicketStatus;
 
 type DbResult<T> = std::result::Result<T, ApplicationError>;
 

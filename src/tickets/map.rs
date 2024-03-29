@@ -2,11 +2,11 @@ use mongodb::bson::oid::ObjectId;
 use tonic::Status;
 
 use crate::datautils::{convert_datetime_to_timestamp, convert_timestamp_to_datetime};
-use crate::proto::ticketmngr::{self, TicketStatus};
+use crate::proto::ticketsrvc::{self, TicketStatus};
 
 use super::data;
 
-impl From<data::Ticket> for ticketmngr::Ticket {
+impl From<data::Ticket> for ticketsrvc::Ticket {
     fn from(t: data::Ticket) -> Self {
         let p = t.passenger;
         let ticket_status =
@@ -16,7 +16,7 @@ impl From<data::Ticket> for ticketmngr::Ticket {
             id: t._id.to_string(),
             flight_id: t.flight_id,
             url: t.url,
-            passenger: Some(ticketmngr::PassengerDetails {
+            passenger: Some(ticketsrvc::PassengerDetails {
                 ssn: p.ssn,
                 name: p.name,
                 surname: p.surname,
@@ -30,10 +30,10 @@ impl From<data::Ticket> for ticketmngr::Ticket {
     }
 }
 
-impl TryFrom<ticketmngr::Ticket> for data::Ticket {
+impl TryFrom<ticketsrvc::Ticket> for data::Ticket {
     type Error = Status;
 
-    fn try_from(t: ticketmngr::Ticket) -> Result<Self, Self::Error> {
+    fn try_from(t: ticketsrvc::Ticket) -> Result<Self, Self::Error> {
         let Some(p) = t.passenger else {
             return Err(Status::invalid_argument("missing passenger details"));
         };

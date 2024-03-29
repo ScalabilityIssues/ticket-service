@@ -11,8 +11,9 @@ use tonic::transport::{Channel, Server};
 use tower_http::trace;
 use tracing::Level;
 
+use crate::proto::ticketsrvc::tickets_server::TicketsServer;
+use crate::tickets::TicketsApp;
 use crate::{dependencies::FlightManager, rabbitmq::Rabbit};
-use crate::{proto::ticketmngr::tickets_server::TicketsServer, tickets::TicketsApp};
 
 mod config;
 mod datautils;

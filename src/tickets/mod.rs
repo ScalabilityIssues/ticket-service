@@ -5,11 +5,11 @@ use crate::datautils::convert_str_to_object_id;
 use crate::dependencies::FlightManager;
 use crate::parse::parse_update_paths;
 use crate::proto::flightmngr::Plane;
-use crate::proto::ticketmngr::{
+use crate::proto::ticketsrvc::{
     tickets_server::Tickets, CreateTicketRequest, DeleteTicketRequest, GetTicketRequest, Ticket,
     TicketList, UpdateTicketRequest,
 };
-use crate::proto::ticketmngr::{
+use crate::proto::ticketsrvc::{
     FlightStatistics, GetFlightStatisticsRequest, ListTicketsRequest, TicketStatus,
 };
 use crate::rabbitmq::{Rabbit, UpdateKind};

@@ -1,6 +1,6 @@
 // tonic::include_proto!("_");
 
-pub mod ticketmngr {
+pub mod ticketsrvc {
     tonic::include_proto!("ticketsrvc");
 }
 
