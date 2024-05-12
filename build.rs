@@ -6,20 +6,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .protoc_arg("--experimental_allow_proto3_optional")
         .file_descriptor_set_path(out_dir.join("proto_descriptor.bin"))
-        .build_client(false)
-        .build_transport(false)
-        .compile(&["proto/ticketsrvc/tickets.proto"], &["proto"])?;
-
-    tonic_build::configure()
-        .protoc_arg("--experimental_allow_proto3_optional")
-        .build_server(false)
         .build_transport(false)
         .compile(
             &[
+                "proto/ticketsrvc/tickets.proto",
                 "proto/flightmngr/planes.proto",
                 "proto/flightmngr/flights.proto",
             ],
-            &["proto", "proto/googleapis"],
+            &["proto"],
         )?;
 
     Ok(())
