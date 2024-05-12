@@ -14,20 +14,8 @@ fn default_flightmngr_url() -> String {
     String::from("grpc://flightmngr")
 }
 
-fn default_rabbitmq_url() -> String {
-    String::from("localhost")
-}
-
 fn default_rabbitmq_port() -> u16 {
     5672
-}
-
-fn default_rabbitmq_user() -> String {
-    String::from("guest")
-}
-
-fn default_rabbitmq_password() -> String {
-    String::from("hard0ne")
 }
 
 #[derive(Deserialize, Debug)]
@@ -39,12 +27,9 @@ pub struct Options {
     pub port: u16,
     #[serde(default = "default_flightmngr_url")]
     pub flightmngr_url: String,
-    #[serde(default = "default_rabbitmq_url")]
     pub rabbitmq_url: String,
     #[serde(default = "default_rabbitmq_port")]
     pub rabbitmq_port: u16,
-    #[serde(default = "default_rabbitmq_user")]
     pub rabbitmq_user: String,
-    #[serde(default = "default_rabbitmq_password")]
     pub rabbitmq_password: String,
 }
