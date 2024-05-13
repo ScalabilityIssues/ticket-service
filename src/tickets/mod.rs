@@ -2,7 +2,7 @@ use mongodb::Database;
 use tonic::{Request, Response, Status};
 
 use crate::datautils::convert_str_to_object_id;
-use crate::dependencies::FlightManager;
+use crate::dependencies::{FlightManager, ValidationService};
 use crate::parse::parse_update_paths;
 use crate::proto::flightmngr::Plane;
 use crate::proto::ticketsrvc::{
@@ -10,8 +10,9 @@ use crate::proto::ticketsrvc::{
     TicketList, UpdateTicketRequest,
 };
 use crate::proto::ticketsrvc::{
-    FlightStatistics, GetFlightStatisticsRequest, ListTicketsRequest, TicketStatus,
+    FlightStatistics, GetFlightStatisticsRequest, ListTicketsRequest, SignedTicket, TicketStatus,
 };
+use crate::proto::validationsvc::SignTicketRequest;
 use crate::rabbitmq::{Rabbit, UpdateKind};
 
 use self::data::TicketDatabase;
@@ -22,6 +23,7 @@ mod map;
 pub struct TicketsApp {
     mongo: Database,
     flightmngr: FlightManager,
+    validationsvc: ValidationService,
     rabbitmq: Rabbit,
 }
 
@@ -50,6 +52,28 @@ impl Tickets for TicketsApp {
         let ticket = self.mongo.get_ticket(id, allow_nonvalid).await?;
 
         Ok(Response::new(ticket.into()))
+    }
+
+    async fn get_signed_ticket(
+        &self,
+        request: Request<GetTicketRequest>,
+    ) -> Result<Response<SignedTicket>, Status> {
+        let GetTicketRequest { id, .. } = request.into_inner();
+        let id = convert_str_to_object_id(&id, "invalid id")?;
+
+        let ticket = self.mongo.get_ticket(id, false).await?;
+
+        let signed_ticket = self
+            .validationsvc
+            .validation_client
+            .clone()
+            .sign_ticket(SignTicketRequest {
+                ticket: Some(ticket.into()),
+            })
+            .await?
+            .into_inner();
+
+        Ok(Response::new(signed_ticket.into()))
     }
 
     async fn create_ticket(
@@ -146,10 +170,16 @@ impl Tickets for TicketsApp {
 }
 
 impl TicketsApp {
-    pub fn new(mongo_client: Database, flightmngr: FlightManager, rabbitmq: Rabbit) -> Self {
+    pub fn new(
+        mongo_client: Database,
+        flightmngr: FlightManager,
+        validationsvc: ValidationService,
+        rabbitmq: Rabbit,
+    ) -> Self {
         Self {
             mongo: mongo_client,
             flightmngr,
+            validationsvc,
             rabbitmq,
         }
     }

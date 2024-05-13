@@ -1,9 +1,9 @@
 use tonic::{transport::Channel, Status};
 
-use crate::proto::flightmngr::{
+use crate::proto::{flightmngr::{
     flights_client::FlightsClient, planes_client::PlanesClient, GetFlightRequest, GetPlaneRequest,
     Plane,
-};
+}, validationsvc::validation_client::ValidationClient};
 
 #[derive(Debug, Clone)]
 pub struct FlightManager {
@@ -37,5 +37,19 @@ impl FlightManager {
             .into_inner();
 
         Ok(airplane)
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct ValidationService {
+    pub validation_client: ValidationClient<Channel>,
+}
+
+impl ValidationService {
+    pub fn new(channel: Channel) -> Self {
+        Self {
+            validation_client: ValidationClient::new(channel),
+        }
     }
 }

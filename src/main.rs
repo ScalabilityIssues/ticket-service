@@ -11,7 +11,7 @@ use tonic::transport::{Channel, Server};
 use tower_http::trace;
 use tracing::Level;
 
-use crate::proto::ticketsrvc::tickets_server::TicketsServer;
+use crate::{dependencies::ValidationService, proto::ticketsrvc::tickets_server::TicketsServer};
 use crate::tickets::TicketsApp;
 use crate::{dependencies::FlightManager, rabbitmq::Rabbit};
 
@@ -54,7 +54,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("successfully connected to rabbitmq broker and channel created...");
 
     // define flightmngr grpc client
-    let channel = Channel::builder(opt.flightmngr_url.try_into()?)
+    let flightmngr_channel = Channel::builder(opt.flightmngr_url.try_into()?)
+        .connect()
+        .await?;
+
+    // define validationsvc grpc client
+    let validationsvc_channel = Channel::builder(opt.validationsvc_url.try_into()?)
         .connect()
         .await?;
 
@@ -79,7 +84,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_service(reflection)
         .add_service(TicketsServer::new(TicketsApp::new(
             client,
-            FlightManager::new(channel),
+            FlightManager::new(flightmngr_channel),
+            ValidationService::new(validationsvc_channel),
             rabbitmq,
         )))
         // serve

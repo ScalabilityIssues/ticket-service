@@ -10,6 +10,11 @@
     "terminal.integrated.env.linux": {
         "USERNAME": "username",
         "PASSWORD": "password",
-        "DATABASE_URL": "mongodb://username:password@localhost:27017/"
+        "DATABASE_URL": "mongodb://username:password@localhost:27017/",
+        "RABBITMQ_USER": "guest",
+        "RABBITMQ_PASSWORD": "guest",
+        "RABBITMQ_URL": "localhost",
+        "FLIGHTMNGR_URL": "grpc://localhost:60051",
+        "VALIDATIONSVC_URL": "grpc://localhost:60052"
     }
 }
