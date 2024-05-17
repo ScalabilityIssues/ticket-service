@@ -33,9 +33,9 @@ pub struct Options {
     pub flightmngr_url: String,
     #[serde(default = "default_validationsvc_url")]
     pub validationsvc_url: String,
-    pub rabbitmq_url: String,
+    pub rabbitmq_host: String,
     #[serde(default = "default_rabbitmq_port")]
     pub rabbitmq_port: u16,
-    pub rabbitmq_user: String,
+    pub rabbitmq_username: String,
     pub rabbitmq_password: String,
 }
