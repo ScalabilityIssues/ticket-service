@@ -11,9 +11,9 @@ use tonic::transport::{Channel, Server};
 use tower_http::trace;
 use tracing::Level;
 
-use crate::{dependencies::ValidationService, proto::ticketsrvc::tickets_server::TicketsServer};
 use crate::tickets::TicketsApp;
 use crate::{dependencies::FlightManager, rabbitmq::Rabbit};
+use crate::{dependencies::ValidationService, proto::ticketsrvc::tickets_server::TicketsServer};
 
 mod config;
 mod datautils;
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &opt.rabbitmq_user,
         &opt.rabbitmq_password,
         String::from("ticket-update"),
-        String::from("direct"),
+        String::from("fanout"),
     )
     .await?;
     tracing::info!("successfully connected to rabbitmq broker and channel created...");
