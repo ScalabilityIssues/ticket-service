@@ -11,11 +11,11 @@ fn default_port() -> u16 {
 }
 
 fn default_flightmngr_url() -> String {
-    String::from("grpc://flightmngr")
+    String::from("grpc://flightmngr:50051")
 }
 
 fn default_validationsvc_url() -> String {
-    String::from("grpc://validationsvc")
+    String::from("grpc://validationsvc:50051")
 }
 
 fn default_rabbitmq_port() -> u16 {
