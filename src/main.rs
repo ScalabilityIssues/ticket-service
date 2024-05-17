@@ -54,14 +54,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("successfully connected to rabbitmq broker and channel created...");
 
     // define flightmngr grpc client
-    let flightmngr_channel = Channel::builder(opt.flightmngr_url.try_into()?)
-        .connect()
-        .await?;
+    let flightmngr_channel = Channel::from_shared(opt.flightmngr_url)?.connect_lazy();
 
     // define validationsvc grpc client
-    let validationsvc_channel = Channel::builder(opt.validationsvc_url.try_into()?)
-        .connect()
-        .await?;
+    let validationsvc_channel = Channel::from_shared(opt.validationsvc_url)?.connect_lazy();
 
     // bind server socket
     let addr = SocketAddr::new(opt.ip, opt.port);
