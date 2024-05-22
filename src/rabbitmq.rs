@@ -24,7 +24,7 @@ pub enum UpdateKind {
 
 impl Rabbit {
     pub async fn new(
-        rabbitmq_url: &str,
+        rabbitmq_host: &str,
         rabbitmq_port: u16,
         rabbitmq_user: &str,
         rabbitmq_password: &str,
@@ -33,7 +33,7 @@ impl Rabbit {
     ) -> Result<Self, Box<dyn Error>> {
         // open a connection to RabbitMQ server
         let rabbitmq = Connection::open(&OpenConnectionArguments::new(
-            rabbitmq_url,
+            rabbitmq_host,
             rabbitmq_port,
             rabbitmq_user,
             rabbitmq_password,
