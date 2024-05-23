@@ -1,4 +1,14 @@
 services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - 5672:5672
+      - 15672:15672
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+
   mongo:
     image: mongo
     environment:
@@ -21,7 +31,7 @@ services:
     image: ghcr.io/scalabilityissues/flight-manager:main
     environment:
       DATABASE_URL: postgres://postgres:pwd@flightmngr-db:5432
-      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_HOST: rabbitmq
       RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
     ports:
