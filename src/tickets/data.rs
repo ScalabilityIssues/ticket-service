@@ -35,8 +35,17 @@ pub trait TicketDatabase {
     fn ticket_collection(&self) -> Collection<Ticket>;
     fn deleted_ticket_collection(&self) -> Collection<Ticket>;
 
-    async fn list_tickets(&self, include_nonvalid: bool) -> DbResult<Vec<Ticket>> {
-        let stream_valid = self.ticket_collection().find(None, None).await?;
+    async fn list_tickets(
+        &self,
+        include_nonvalid: bool,
+        flight_id: Option<&str>,
+    ) -> DbResult<Vec<Ticket>> {
+        let query = match flight_id {
+            Some(flight_id) => doc! { "flight_id": doc! { "$eq": flight_id } },
+            None => doc! {},
+        };
+
+        let stream_valid = self.ticket_collection().find(query, None).await?;
         let mut tickets = stream_valid.collect::<Result<Vec<_>, _>>().await?;
         if include_nonvalid {
             let stream_deleted = self.deleted_ticket_collection().find(None, None).await?;

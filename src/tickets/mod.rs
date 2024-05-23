@@ -33,9 +33,15 @@ impl Tickets for TicketsApp {
         &self,
         request: Request<ListTicketsRequest>,
     ) -> Result<Response<TicketList>, Status> {
-        let ListTicketsRequest { include_nonvalid } = request.into_inner();
+        let ListTicketsRequest {
+            include_nonvalid,
+            flight_id,
+        } = request.into_inner();
 
-        let result = self.mongo.list_tickets(include_nonvalid).await?;
+        let result = self
+            .mongo
+            .list_tickets(include_nonvalid, flight_id.as_deref())
+            .await?;
 
         let tickets: Vec<Ticket> = result.into_iter().map(Into::into).collect();
 
