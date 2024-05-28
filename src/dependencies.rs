@@ -1,9 +1,13 @@
 use tonic::{transport::Channel, Status};
 
-use crate::proto::{flightmngr::{
-    flights_client::FlightsClient, planes_client::PlanesClient, GetFlightRequest, GetPlaneRequest,
-    Plane,
-}, validationsvc::validation_client::ValidationClient};
+use crate::proto::{
+    flightmngr::{
+        flights_client::FlightsClient, planes_client::PlanesClient, GetFlightRequest,
+        GetPlaneRequest, Plane,
+    },
+    ticketsrvc::Ticket,
+    validationsvc::{validation_client::ValidationClient, SignTicketRequest, SignTicketResponse},
+};
 
 #[derive(Debug, Clone)]
 pub struct FlightManager {
@@ -40,7 +44,6 @@ impl FlightManager {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct ValidationService {
     pub validation_client: ValidationClient<Channel>,
@@ -51,5 +54,18 @@ impl ValidationService {
         Self {
             validation_client: ValidationClient::new(channel),
         }
+    }
+
+    pub async fn make_qr_code(&self, ticket: Ticket) -> Result<Vec<u8>, Status> {
+        let SignTicketResponse { qr } = self
+            .validation_client
+            .clone()
+            .sign_ticket(SignTicketRequest {
+                ticket: Some(ticket.clone()),
+            })
+            .await?
+            .into_inner();
+
+        Ok(qr)
     }
 }

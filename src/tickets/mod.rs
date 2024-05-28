@@ -5,14 +5,12 @@ use crate::datautils::convert_str_to_object_id;
 use crate::dependencies::{FlightManager, ValidationService};
 use crate::parse::parse_update_paths;
 use crate::proto::flightmngr::Plane;
+use crate::proto::ticketsrvc::tickets_server::Tickets;
 use crate::proto::ticketsrvc::{
-    tickets_server::Tickets, CreateTicketRequest, DeleteTicketRequest, GetTicketRequest, Ticket,
-    TicketList, UpdateTicketRequest,
+    CreateTicketRequest, DeleteTicketRequest, FlightStatistics, GetFlightStatisticsRequest,
+    GetTicketRequest, GetTicketWithQrCodeResponse, ListTicketsRequest, Ticket, TicketList,
+    TicketStatus, UpdateTicketRequest,
 };
-use crate::proto::ticketsrvc::{
-    FlightStatistics, GetFlightStatisticsRequest, ListTicketsRequest, SignedTicket, TicketStatus,
-};
-use crate::proto::validationsvc::SignTicketRequest;
 use crate::rabbitmq::{Rabbit, UpdateKind};
 
 use self::data::TicketDatabase;
@@ -60,26 +58,21 @@ impl Tickets for TicketsApp {
         Ok(Response::new(ticket.into()))
     }
 
-    async fn get_signed_ticket(
+    async fn get_ticket_with_qr_code(
         &self,
         request: Request<GetTicketRequest>,
-    ) -> Result<Response<SignedTicket>, Status> {
+    ) -> Result<Response<GetTicketWithQrCodeResponse>, Status> {
         let GetTicketRequest { id, .. } = request.into_inner();
         let id = convert_str_to_object_id(&id, "invalid id")?;
 
-        let ticket = self.mongo.get_ticket(id, false).await?;
+        let ticket: Ticket = self.mongo.get_ticket(id, false).await?.into();
 
-        let signed_ticket = self
-            .validationsvc
-            .validation_client
-            .clone()
-            .sign_ticket(SignTicketRequest {
-                ticket: Some(ticket.into()),
-            })
-            .await?
-            .into_inner();
+        let qr_code = self.validationsvc.make_qr_code(ticket.clone()).await?;
 
-        Ok(Response::new(signed_ticket.into()))
+        Ok(Response::new(GetTicketWithQrCodeResponse {
+            qr_code,
+            ticket: Some(ticket),
+        }))
     }
 
     async fn create_ticket(

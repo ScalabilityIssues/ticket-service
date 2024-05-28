@@ -1,10 +1,8 @@
 use mongodb::bson::oid::ObjectId;
-use prost::Message;
 use tonic::Status;
 
 use crate::datautils::{convert_datetime_to_timestamp, convert_timestamp_to_datetime};
 use crate::proto::ticketsrvc::{self, TicketStatus};
-use crate::proto::validationsvc;
 
 use super::data;
 
@@ -62,14 +60,5 @@ impl TryFrom<ticketsrvc::Ticket> for data::Ticket {
             estimated_cargo_weight: t.estimated_cargo_weight,
             ticket_status,
         })
-    }
-}
-
-impl From<validationsvc::SignedTicket> for ticketsrvc::SignedTicket {
-    fn from(s: validationsvc::SignedTicket) -> Self {
-        Self {
-            ticket: s.ticket.encode_to_vec(),
-            signature: s.signature.encode_to_vec(),
-        }
     }
 }
