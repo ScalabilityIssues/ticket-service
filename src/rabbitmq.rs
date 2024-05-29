@@ -6,6 +6,7 @@ use amqprs::{
     connection::{Connection, OpenConnectionArguments},
     BasicProperties, FieldTable, FieldValue,
 };
+use backon::{ExponentialBuilder, Retryable};
 use prost::Message;
 
 use crate::{errors::ApplicationError, proto::ticketsrvc::Ticket};
@@ -26,22 +27,23 @@ impl Rabbit {
     pub async fn new(
         rabbitmq_host: &str,
         rabbitmq_port: u16,
-        rabbitmq_user: &str,
+        rabbitmq_username: &str,
         rabbitmq_password: &str,
         exchange_name: String,
         exchange_type: String,
     ) -> Result<Self, Box<dyn Error>> {
-        // open a connection to RabbitMQ server
-        let rabbitmq = Connection::open(&OpenConnectionArguments::new(
+        let connection_arguments = OpenConnectionArguments::new(
             rabbitmq_host,
             rabbitmq_port,
-            rabbitmq_user,
+            rabbitmq_username,
             rabbitmq_password,
-        ))
-        .await?;
+        );
+
+        let rabbitmq = (|| async { Connection::open(&connection_arguments).await })
+            .retry(&ExponentialBuilder::default().with_max_times(10))
+            .await?;
 
         // Register connection level callbacks.
-        // TODO: In production, user should create its own type and implement trait `ConnectionCallback`.
         rabbitmq
             .register_callback(DefaultConnectionCallback)
             .await?;
@@ -80,14 +82,20 @@ impl Rabbit {
     ) -> Result<(), ApplicationError> {
         let message = message.encode_to_vec();
 
-        // create arguments for basic_publish
         let args = BasicPublishArguments::new(&self.exchange_name, "");
+
         let mut ft = FieldTable::new();
         ft.insert(
             "x-update-kind".try_into().unwrap(),
             FieldValue::B(update_kind as u8),
         );
-        let properties = BasicProperties::default().with_headers(ft).finish();
+
+        let properties = BasicProperties::default()
+            .with_content_type("application/x-protobuf")
+            .with_message_type("ticketsrvc.Ticket")
+            .with_headers(ft)
+            .finish();
+
         self.channel
             .basic_publish(properties, message, args)
             .await?;
