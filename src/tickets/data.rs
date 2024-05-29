@@ -77,6 +77,28 @@ pub trait TicketDatabase {
         }
     }
 
+    async fn get_ticket_from_url(&self, url: String, allow_nonvalid: bool) -> DbResult<Ticket> {
+        let ticket = self
+            .ticket_collection()
+            .find_one(doc! { "url": &url }, None)
+            .await?;
+
+        match ticket {
+            Some(t) => Ok(t),
+            None => {
+                if allow_nonvalid {
+                    let ticket = self
+                        .deleted_ticket_collection()
+                        .find_one(doc! { "url": &url }, None)
+                        .await?;
+                    return ticket.ok_or_else(|| ApplicationError::not_found("ticket not found"));
+                } else {
+                    return Err(ApplicationError::not_found("ticket not found"));
+                }
+            }
+        }
+    }
+
     async fn create_ticket(&self, ticket: Ticket) -> DbResult<ObjectId> {
         let res = self.ticket_collection().insert_one(ticket, None).await?;
         let id = res.inserted_id.as_object_id().unwrap();

@@ -1,10 +1,12 @@
 use mongodb::Database;
+use rand::distributions::{Alphanumeric, DistString};
 use tonic::{Request, Response, Status};
 
 use crate::datautils::convert_str_to_object_id;
 use crate::dependencies::{FlightManager, ValidationService};
 use crate::parse::parse_update_paths;
 use crate::proto::flightmngr::Plane;
+use crate::proto::ticketsrvc::get_ticket_request::Query;
 use crate::proto::ticketsrvc::tickets_server::Tickets;
 use crate::proto::ticketsrvc::{
     CreateTicketRequest, DeleteTicketRequest, FlightStatistics, GetFlightStatisticsRequest,
@@ -50,10 +52,18 @@ impl Tickets for TicketsApp {
         &self,
         request: Request<GetTicketRequest>,
     ) -> Result<Response<Ticket>, Status> {
-        let GetTicketRequest { id, allow_nonvalid } = request.into_inner();
-        let id = convert_str_to_object_id(&id, "invalid id")?;
-
-        let ticket = self.mongo.get_ticket(id, allow_nonvalid).await?;
+        let GetTicketRequest {
+            query,
+            allow_nonvalid,
+        } = request.into_inner();
+        let ticket = match query {
+            Some(Query::Id(id)) => {
+                let id = convert_str_to_object_id(&id, "invalid id")?;
+                self.mongo.get_ticket(id, allow_nonvalid).await?
+            }
+            Some(Query::Url(url)) => self.mongo.get_ticket_from_url(url, allow_nonvalid).await?,
+            None => return Err(Status::invalid_argument("query required")),
+        };
 
         Ok(Response::new(ticket.into()))
     }
@@ -62,10 +72,17 @@ impl Tickets for TicketsApp {
         &self,
         request: Request<GetTicketRequest>,
     ) -> Result<Response<GetTicketWithQrCodeResponse>, Status> {
-        let GetTicketRequest { id, .. } = request.into_inner();
-        let id = convert_str_to_object_id(&id, "invalid id")?;
+        let GetTicketRequest { query, .. } = request.into_inner();
 
-        let ticket: Ticket = self.mongo.get_ticket(id, false).await?.into();
+        let ticket: Ticket = match query {
+            Some(Query::Id(id)) => {
+                let id = convert_str_to_object_id(&id, "invalid id")?;
+                self.mongo.get_ticket(id, false).await?
+            }
+            Some(Query::Url(url)) => self.mongo.get_ticket_from_url(url, false).await?,
+            None => return Err(Status::invalid_argument("query required")),
+        }
+        .into();
 
         let qr_code = self.validationsvc.make_qr_code(ticket.clone()).await?;
 
@@ -96,6 +113,7 @@ impl Tickets for TicketsApp {
             return Err(Status::failed_precondition("no seat available"));
         }
 
+        new_ticket.url = Alphanumeric.sample_string(&mut rand::thread_rng(), 64);
         let id = self.mongo.create_ticket(new_ticket.try_into()?).await?;
 
         let ticket: Ticket = self.mongo.get_ticket(id, false).await?.into();
